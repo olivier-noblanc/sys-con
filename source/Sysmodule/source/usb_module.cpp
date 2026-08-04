@@ -2,6 +2,7 @@
 #include "usb_module.h"
 #include "controller_handler.h"
 #include "Controllers.h"
+#include "Controllers/ShanWanPantherLordController.h"
 
 #include "SwitchUSBDevice.h"
 #include "SwitchUSBLock.h"
@@ -68,6 +69,44 @@ namespace syscon::usb
                     */
 
                     SwitchUSBLock usbLock;
+
+                    // --- ShanWan PantherLord (VID 0810 PID 0001) : detection dediee ---
+                    // (HID standard ne le detecte pas : QueryAvailableInterfacesByClass
+                    // retourne 0 pour ce device)
+                    if (!controllers::IsAtControllerLimit())
+                    {
+                        s32 shanwan_count = 0;
+                        memset(interfaces, 0, sizeof(interfaces));
+
+                        UsbHsInterfaceFilter filterShanwan{
+                            .Flags = UsbHsInterfaceFilterFlags_idVendor | UsbHsInterfaceFilterFlags_idProduct,
+                            .idVendor = SHANWAN_VID,
+                            .idProduct = SHANWAN_PID,
+                        };
+
+                        if (R_SUCCEEDED(usbHsQueryAvailableInterfaces(&filterShanwan, interfaces, sizeof(interfaces), &shanwan_count))
+                            && shanwan_count > 0)
+                        {
+                            timeoutNs = MS_TO_NS(1);
+
+                            syscon::logger::LogInfo("Trying to initialize ShanWan PantherLord: [%04x-%04x] ...",
+                                                    interfaces[0].device_desc.idVendor, interfaces[0].device_desc.idProduct);
+
+                            ControllerConfig config;
+                            ::syscon::config::LoadControllerConfig(CONFIG_FULLPATH, &config,
+                                interfaces[0].device_desc.idVendor, interfaces[0].device_desc.idProduct,
+                                g_auto_add_controller, "");
+
+                            controllers::Insert(std::make_unique<ShanWanPantherLordController>(
+                                std::make_unique<SwitchUSBDevice>(interfaces, 1),
+                                config,
+                                std::make_unique<syscon::logger::Logger>()));
+
+                            continue;
+                        }
+                    }
+                    // --- fin ShanWan PantherLord ---
+
                     s32 total_interfaces_hid = 0, total_interfaces_xbox360 = 0, total_interfaces_xboxone = 0, total_interfaces_xbox360w = 0, total_interfaces_xbox = 0;
 
                     if (
