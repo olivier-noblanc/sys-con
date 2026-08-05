@@ -75,14 +75,14 @@ namespace syscon::usb
                     {
                         const auto dump_interface = [](const char *tag, int i, const UsbHsInterface &iface)
                         {
-                            syscon::logger::LogInfo("[DEBUG] %s[%d]: infID=0x%llx class=0x%02x sub=0x%02x proto=0x%02x ep=%d VID=0x%04x PID=0x%04x devclass=0x%02x bcd=0x%04x",
+                            syscon::logger::LogInfo("[DEBUG] %s[%d]: infID=%d class=0x%02x sub=0x%02x proto=0x%02x ep=%d VID=0x%04x PID=0x%04x devclass=0x%02x bcd=0x%04x",
                                 tag,
                                 i,
                                 iface.inf.ID,
-                                iface.inf.bInterfaceClass,
-                                iface.inf.bInterfaceSubClass,
-                                iface.inf.bInterfaceProtocol,
-                                iface.inf.num_endpoints,
+                                iface.inf.interface_desc.bInterfaceClass,
+                                iface.inf.interface_desc.bInterfaceSubClass,
+                                iface.inf.interface_desc.bInterfaceProtocol,
+                                iface.inf.interface_desc.bNumEndpoints,
                                 iface.device_desc.idVendor,
                                 iface.device_desc.idProduct,
                                 iface.device_desc.bDeviceClass,
