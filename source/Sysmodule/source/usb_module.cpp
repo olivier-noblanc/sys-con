@@ -94,8 +94,8 @@ namespace syscon::usb
                             .idVendor = SHANWAN_VID,
                         };
                         memset(avail_debug, 0, sizeof(avail_debug));
-                        usbHsQueryAvailableInterfaces(&filterVendorOnly, avail_debug, sizeof(avail_debug), &avail_debug_count);
-                        syscon::logger::LogInfo("[DEBUG] Available interfaces (VID 0810, sans filtre PID): %d", avail_debug_count);
+                        Result rc = usbHsQueryAvailableInterfaces(&filterVendorOnly, avail_debug, sizeof(avail_debug), &avail_debug_count);
+                        syscon::logger::LogInfo("[DEBUG] usbHsQueryAvailableInterfaces rc=0x%x (module=%d desc=%d) count=%d", rc, R_MODULE(rc), R_DESCRIPTION(rc), avail_debug_count);
                         for (s32 i = 0; i < avail_debug_count; i++)
                         {
                             syscon::logger::LogInfo("[DEBUG] Available[%d]: VID=0x%04x PID=0x%04x class=0x%02x sub=0x%02x proto=0x%02x",
