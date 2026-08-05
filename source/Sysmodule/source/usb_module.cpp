@@ -70,6 +70,45 @@ namespace syscon::usb
 
                     SwitchUSBLock usbLock;
 
+                    // --- DEBUG TEMPORAIRE : diagnostic Available vs Acquired pour 0810:0001 ---
+                    // A retirer une fois le diagnostic termine.
+                    {
+                        UsbHsInterface acquired_interfaces[MaxUsbHsInterfacesSize] = {};
+                        s32 acquired_count = QueryAcquiredInterfaces(acquired_interfaces, sizeof(acquired_interfaces));
+                        syscon::logger::LogInfo("[DEBUG] Acquired interfaces: %d", acquired_count);
+                        for (s32 i = 0; i < acquired_count; i++)
+                        {
+                            syscon::logger::LogInfo("[DEBUG] Acquired[%d]: VID=0x%04x PID=0x%04x class=0x%02x sub=0x%02x proto=0x%02x",
+                                i,
+                                acquired_interfaces[i].device_desc.idVendor,
+                                acquired_interfaces[i].device_desc.idProduct,
+                                acquired_interfaces[i].device_desc.bDeviceClass,
+                                acquired_interfaces[i].device_desc.bDeviceSubClass,
+                                acquired_interfaces[i].device_desc.bDeviceProtocol);
+                        }
+
+                        UsbHsInterface avail_debug[MaxUsbHsInterfacesSize] = {};
+                        s32 avail_debug_count = 0;
+                        UsbHsInterfaceFilter filterVendorOnly{
+                            .Flags = UsbHsInterfaceFilterFlags_idVendor,
+                            .idVendor = SHANWAN_VID,
+                        };
+                        memset(avail_debug, 0, sizeof(avail_debug));
+                        usbHsQueryAvailableInterfaces(&filterVendorOnly, avail_debug, sizeof(avail_debug), &avail_debug_count);
+                        syscon::logger::LogInfo("[DEBUG] Available interfaces (VID 0810, sans filtre PID): %d", avail_debug_count);
+                        for (s32 i = 0; i < avail_debug_count; i++)
+                        {
+                            syscon::logger::LogInfo("[DEBUG] Available[%d]: VID=0x%04x PID=0x%04x class=0x%02x sub=0x%02x proto=0x%02x",
+                                i,
+                                avail_debug[i].device_desc.idVendor,
+                                avail_debug[i].device_desc.idProduct,
+                                avail_debug[i].device_desc.bDeviceClass,
+                                avail_debug[i].device_desc.bDeviceSubClass,
+                                avail_debug[i].device_desc.bDeviceProtocol);
+                        }
+                    }
+                    // --- FIN DEBUG ---
+
                     // --- ShanWan PantherLord (VID 0810 PID 0001) : detection dediee ---
                     // (HID standard ne le detecte pas : QueryAvailableInterfacesByClass
                     // retourne 0 pour ce device)
