@@ -73,7 +73,7 @@ namespace syscon::usb
                     // --- DEBUG TEMPORAIRE : diagnostic Available vs Acquired pour 0810:0001 ---
                     // A retirer une fois le diagnostic termine.
                     {
-                        UsbHsInterface acquired_interfaces[MaxUsbHsInterfacesSize] = {};
+                        static UsbHsInterface acquired_interfaces[MaxUsbHsInterfacesSize] = {};
                         s32 acquired_count = QueryAcquiredInterfaces(acquired_interfaces, sizeof(acquired_interfaces));
                         syscon::logger::LogInfo("[DEBUG] Acquired interfaces: %d", acquired_count);
                         for (s32 i = 0; i < acquired_count; i++)
@@ -87,7 +87,7 @@ namespace syscon::usb
                                 acquired_interfaces[i].device_desc.bDeviceProtocol);
                         }
 
-                        UsbHsInterface avail_debug[MaxUsbHsInterfacesSize] = {};
+                        static UsbHsInterface avail_debug[MaxUsbHsInterfacesSize] = {};
                         s32 avail_debug_count = 0;
                         UsbHsInterfaceFilter filterVendorOnly{
                             .Flags = UsbHsInterfaceFilterFlags_idVendor,
