@@ -70,42 +70,43 @@ namespace syscon::usb
 
                     SwitchUSBLock usbLock;
 
-                    // --- DEBUG TEMPORAIRE : diagnostic Available vs Acquired pour 0810:0001 ---
+                    // --- DEBUG TEMPORAIRE : diagnostic de toutes les interfaces USB visibles par usbHs ---
                     // A retirer une fois le diagnostic termine.
                     {
+                        const auto dump_interface = [](const char *tag, int i, const UsbHsInterface &iface)
+                        {
+                            syscon::logger::LogInfo("[DEBUG] %s[%d]: infID=0x%llx class=0x%02x sub=0x%02x proto=0x%02x ep=%d VID=0x%04x PID=0x%04x devclass=0x%02x bcd=0x%04x",
+                                tag,
+                                i,
+                                iface.inf.ID,
+                                iface.inf.bInterfaceClass,
+                                iface.inf.bInterfaceSubClass,
+                                iface.inf.bInterfaceProtocol,
+                                iface.inf.num_endpoints,
+                                iface.device_desc.idVendor,
+                                iface.device_desc.idProduct,
+                                iface.device_desc.bDeviceClass,
+                                iface.device_desc.bcdDevice);
+                        };
+
                         static UsbHsInterface acquired_interfaces[MaxUsbHsInterfacesSize] = {};
                         s32 acquired_count = QueryAcquiredInterfaces(acquired_interfaces, sizeof(acquired_interfaces));
                         syscon::logger::LogInfo("[DEBUG] Acquired interfaces: %d", acquired_count);
                         for (s32 i = 0; i < acquired_count; i++)
-                        {
-                            syscon::logger::LogInfo("[DEBUG] Acquired[%d]: VID=0x%04x PID=0x%04x class=0x%02x sub=0x%02x proto=0x%02x",
-                                i,
-                                acquired_interfaces[i].device_desc.idVendor,
-                                acquired_interfaces[i].device_desc.idProduct,
-                                acquired_interfaces[i].device_desc.bDeviceClass,
-                                acquired_interfaces[i].device_desc.bDeviceSubClass,
-                                acquired_interfaces[i].device_desc.bDeviceProtocol);
-                        }
+                            dump_interface("Acquired", i, acquired_interfaces[i]);
 
                         static UsbHsInterface avail_debug[MaxUsbHsInterfacesSize] = {};
                         s32 avail_debug_count = 0;
-                        UsbHsInterfaceFilter filterVendorOnly{
-                            .Flags = UsbHsInterfaceFilterFlags_idVendor,
-                            .idVendor = SHANWAN_VID,
+
+                        // Filtre vide = toutes les interfaces disponibles (pas seulement le VID 0810)
+                        UsbHsInterfaceFilter filterAll{
+                            .Flags = 0,
                         };
                         memset(avail_debug, 0, sizeof(avail_debug));
-                        Result rc = usbHsQueryAvailableInterfaces(&filterVendorOnly, avail_debug, sizeof(avail_debug), &avail_debug_count);
-                        syscon::logger::LogInfo("[DEBUG] usbHsQueryAvailableInterfaces rc=0x%x (module=%d desc=%d) count=%d", rc, R_MODULE(rc), R_DESCRIPTION(rc), avail_debug_count);
+                        Result rc = usbHsQueryAvailableInterfaces(&filterAll, avail_debug, sizeof(avail_debug), &avail_debug_count);
+                        syscon::logger::LogInfo("[DEBUG] usbHsQueryAvailableInterfaces(ALL) rc=0x%x (module=%d desc=%d) count=%d", rc, R_MODULE(rc), R_DESCRIPTION(rc), avail_debug_count);
                         for (s32 i = 0; i < avail_debug_count; i++)
-                        {
-                            syscon::logger::LogInfo("[DEBUG] Available[%d]: VID=0x%04x PID=0x%04x class=0x%02x sub=0x%02x proto=0x%02x",
-                                i,
-                                avail_debug[i].device_desc.idVendor,
-                                avail_debug[i].device_desc.idProduct,
-                                avail_debug[i].device_desc.bDeviceClass,
-                                avail_debug[i].device_desc.bDeviceSubClass,
-                                avail_debug[i].device_desc.bDeviceProtocol);
-                        }
+                            dump_interface("Available", i, avail_debug[i]);
                     }
                     // --- FIN DEBUG ---
 
