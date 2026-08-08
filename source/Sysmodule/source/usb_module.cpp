@@ -98,9 +98,6 @@ namespace syscon::usb
                         static UsbHsInterface avail_debug[MaxUsbHsInterfacesSize] = {};
                         s32 avail_debug_count = 0;
 
-                        static UsbHsInterface avail_debug[MaxUsbHsInterfacesSize] = {};
-                        s32 avail_debug_count = 0;
-
                         // Filtre vide = toutes les interfaces disponibles (pas seulement le VID 0810)
                         UsbHsInterfaceFilter filterAll{
                             .Flags = 0,
