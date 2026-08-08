@@ -161,20 +161,74 @@ namespace syscon::usb
             constexpr u16 TARGET_VID = 0x1a40;
             constexpr u16 TARGET_PID = 0x0101;
 
-            UsbHsInterfaceFilter filter = {};
-            filter.Flags = UsbHsInterfaceFilterFlags_idVendor | UsbHsInterfaceFilterFlags_idProduct;
-            filter.idVendor = TARGET_VID;
-            filter.idProduct = TARGET_PID;
-
-            UsbHsInterface hubs[4] = {};
-            s32 count = 0;
-
-            Result r = usbHsQueryAllInterfaces(&filter, hubs, sizeof(hubs), &count);
-            if (R_FAILED(r) || count == 0)
+            // Methode 1: filtre VID/PID
             {
-                syscon::logger::LogInfo("[DIAG] Hub %04x:%04x not found via QueryAllInterfaces (rc=0x%x count=%d)", TARGET_VID, TARGET_PID, r, count);
-                return;
+                UsbHsInterfaceFilter filter = {};
+                filter.Flags = UsbHsInterfaceFilterFlags_idVendor | UsbHsInterfaceFilterFlags_idProduct;
+                filter.idVendor = TARGET_VID;
+                filter.idProduct = TARGET_PID;
+
+                UsbHsInterface hubs[4] = {};
+                s32 count = 0;
+
+                Result r = usbHsQueryAllInterfaces(&filter, hubs, sizeof(hubs), &count);
+                if (R_SUCCEEDED(r) && count > 0)
+                {
+                    syscon::logger::LogInfo("[DIAG-HUB] Found %d hub interface(s) via VID/PID filter", count);
+                    goto found;
+                }
             }
+
+            // Methode 2: filtre bInterfaceClass=Hub (0x09) sans autre restriction
+            {
+                UsbHsInterfaceFilter filter = {};
+                filter.Flags = UsbHsInterfaceFilterFlags_bInterfaceClass;
+                filter.bInterfaceClass = 0x09;
+
+                UsbHsInterface hubs[4] = {};
+                s32 count = 0;
+
+                Result r = usbHsQueryAllInterfaces(&filter, hubs, sizeof(hubs), &count);
+                if (R_SUCCEEDED(r) && count > 0)
+                {
+                    syscon::logger::LogInfo("[DIAG-HUB] Found %d hub interface(s) via class filter", count);
+                    goto found;
+                }
+            }
+
+            // Methode 3: aucun filtre (toutes les interfaces visibles)
+            {
+                UsbHsInterface list[16] = {};
+                s32 total = 0;
+                Result r = usbHsQueryAllInterfaces(nullptr, list, sizeof(list), &total);
+                if (R_SUCCEEDED(r) && total > 0)
+                {
+                    syscon::logger::LogInfo("[DIAG-HUB] All interfaces (no filter): %d total", total);
+                    for (s32 i = 0; i < total; i++)
+                    {
+                        syscon::logger::LogInfo("[DIAG-HUB]  All[%d]: VID=0x%04x PID=0x%04x class=0x%02x sub=0x%02x proto=0x%02x if_class=0x%02x if_sub=0x%02x if_proto=0x%02x",
+                            i,
+                            list[i].device_desc.idVendor,
+                            list[i].device_desc.idProduct,
+                            list[i].device_desc.bDeviceClass,
+                            list[i].device_desc.bDeviceSubClass,
+                            list[i].device_desc.bDeviceProtocol,
+                            list[i].inf.interface_desc.bInterfaceClass,
+                            list[i].inf.interface_desc.bInterfaceSubClass,
+                            list[i].inf.interface_desc.bInterfaceProtocol);
+                    }
+                }
+                else
+                {
+                    syscon::logger::LogInfo("[DIAG-HUB] QueryAllInterfaces(no filter) rc=0x%x count=%d", r, total);
+                }
+            }
+
+            // Le hub n'apparait pas dans usb:hs -> pas accessible via ces sessions
+            syscon::logger::LogInfo("[DIAG-HUB] Hub 1a40:0101 NOT accessible via usb:hs (normal: hubs are kernel-managed)");
+            return;
+
+        found:
 
             syscon::logger::LogInfo("[DIAG] Hub %04x:%04x found count=%d", TARGET_VID, TARGET_PID, count);
 
