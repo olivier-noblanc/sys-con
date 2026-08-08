@@ -43,6 +43,119 @@ namespace syscon::usb
 
         Result AddEvent(UsbHsInterfaceFilter *filter, const std::string &name);
 
+// --- DIAG TEMPORAIRE : sondes usb:qdb + usb:obsv ---
+        // usb:qdb::HasQuirk (cmd 1) -> le firmware a-t-il une entree de quirk pour 0810:0000 ?
+        void ProbeQuirkDb()
+        {
+            Result r = smInitialize();
+            if (R_FAILED(r))
+            {
+                syscon::logger::LogInfo("[DIAG] sm init failed rc=0x%x", r);
+                return;
+            }
+
+            Service qdb = {};
+            r = smGetService(&qdb, "usb:qdb");
+            if (R_FAILED(r))
+            {
+                syscon::logger::LogInfo("[DIAG] usb:qdb service open failed rc=0x%x", r);
+                smExit();
+                return;
+            }
+
+            const struct
+            {
+                u16 vid;
+                u16 pid;
+                u16 bcdDevice;
+            } in = { SHANWAN_VID, SHANWAN_PID, 0x0000 };
+
+            static const char *quirk_names[] = {
+                "HidGamepadWhitelist",
+                "ApplicationBlacklist",
+                "NoClearHaltOnEpInit",
+            };
+
+            for (const char *name : quirk_names)
+            {
+                u8 out = 0;
+                Result rc = serviceDispatchInOut(&qdb, 1, in, out,
+                    .buffer_attrs = { SfBufferAttr_In | SfBufferAttr_HipcMapAlias },
+                    .buffers = { { name, strlen(name) } });
+                syscon::logger::LogInfo("[DIAG] usb:qdb HasQuirk(%s) rc=0x%x result=%u (0=absent, 1=present)", name, rc, out);
+            }
+
+            serviceClose(&qdb);
+            smExit();
+        }
+
+        // usb:obsv::GetFlattenedTopology (cmd 1) -> dongle present au niveau port/hub ?
+        void ProbeTopology()
+        {
+            Result r = smInitialize();
+            if (R_FAILED(r))
+            {
+                syscon::logger::LogInfo("[DIAG] sm init failed rc=0x%x", r);
+                return;
+            }
+
+            Service svc = {};
+            r = smGetService(&svc, "usb:obsv");
+            if (R_FAILED(r))
+            {
+                syscon::logger::LogInfo("[DIAG] usb:obsv service open failed rc=0x%x", r);
+                smExit();
+                return;
+            }
+
+            alignas(0x1000) static u8 topo_buf[0x2000] = {};
+            static bool topo_dumped = false;
+
+            Result rc = serviceDispatch(&svc, 1,
+                .buffer_attrs = { SfBufferAttr_HipcMapAlias | SfBufferAttr_Out },
+                .buffers = { { topo_buf, sizeof(topo_buf) } });
+
+            if (R_FAILED(rc))
+            {
+                syscon::logger::LogInfo("[DIAG] usb:obsv GetFlattenedTopology rc=0x%x", rc);
+            }
+
+            serviceClose(&svc);
+            smExit();
+
+            // Recherche de signatures : 0810-0001 (LE) / 0f0d-00c1 (LE)
+            size_t shanwan_hit = 0, hori_hit = 0, vid0810_hit = 0;
+            for (size_t i = 0; i + 3 < sizeof(topo_buf); i++)
+            {
+                if (topo_buf[i + 0] == 0x10 && topo_buf[i + 1] == 0x08 && topo_buf[i + 2] == 0x01 && topo_buf[i + 3] == 0x00)
+                    shanwan_hit++;
+                if (topo_buf[i + 0] == 0x0D && topo_buf[i + 1] == 0x0F && topo_buf[i + 2] == 0xC1 && topo_buf[i + 3] == 0x00)
+                    hori_hit++;
+            }
+            for (size_t i = 0; i + 1 < sizeof(topo_buf); i++)
+            {
+                if (topo_buf[i + 0] == 0x10 && topo_buf[i + 1] == 0x08)
+                    vid0810_hit++;
+            }
+
+            syscon::logger::LogInfo("[DIAG] Topology: shanwan(0810-0001)=%zu hori(0f0d-00c1)=%zu vid0810raw=%zu", shanwan_hit, hori_hit, vid0810_hit);
+
+            if (!topo_dumped)
+            {
+                topo_dumped = true;
+                for (size_t i = 0; i < sizeof(topo_buf); i += 0x10)
+                {
+                    syscon::logger::LogInfo("[DIAG] topo[%04zx]: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+                        i,
+                        topo_buf[i + 0], topo_buf[i + 1], topo_buf[i + 2], topo_buf[i + 3],
+                        topo_buf[i + 4], topo_buf[i + 5], topo_buf[i + 6], topo_buf[i + 7],
+                        topo_buf[i + 8], topo_buf[i + 9], topo_buf[i + 10], topo_buf[i + 11],
+                        topo_buf[i + 12], topo_buf[i + 13], topo_buf[i + 14], topo_buf[i + 15]);
+                }
+            }
+        }
+        // --- FIN DIAG ---
+
         void UsbEventThreadFunc(void *arg)
         {
             UsbHsInterface interfaces[MaxUsbHsInterfacesSize] = {};
@@ -61,6 +174,25 @@ namespace syscon::usb
                 if (R_SUCCEEDED(rc) || R_VALUE(rc) == KERNELRESULT(TimedOut))
                 {
                     syscon::logger::LogDebug("USB event poll: idx_out=%d events=%zu rc=0x%x", idx_out, g_usbEventCount, rc);
+
+                    // --- DIAG TEMPORAIRE : cadence pour ne pas polluer le log ---
+                    {
+                        static bool quirk_probed = false;
+                        if (!quirk_probed)
+                        {
+                            ProbeQuirkDb();
+                            ProbeTopology(); // baseline (rien branche)
+                            quirk_probed = true;
+                        }
+
+                        static u64 topo_iter = 0;
+                        topo_iter++;
+                        if ((topo_iter & 0x0F) == 0) // ~15 poll => ~8s avec timeout 1s en absence de device
+                        {
+                            ProbeTopology();
+                        }
+                    }
+                    // --- FIN DIAG(source cadence) ---
 
                     /*
                         For unknown reason we have to keep this lock in order to lock the usb stacks during the controller initialization
