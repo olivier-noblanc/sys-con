@@ -154,6 +154,111 @@ namespace syscon::usb
                 }
             }
         }
+        // Probe hub 1a40:0101: cherche Alternate Setting 1 (MTT) et log tout
+        // Appelee une fois (cadencee par topo_iter, comme les autres sondes)
+        void ProbeHubAltSettings()
+        {
+            constexpr u16 TARGET_VID = 0x1a40;
+            constexpr u16 TARGET_PID = 0x0101;
+
+            UsbHsInterfaceFilter filter = {};
+            filter.Flags = UsbHsInterfaceFilterFlags_idVendor | UsbHsInterfaceFilterFlags_idProduct;
+            filter.idVendor = TARGET_VID;
+            filter.idProduct = TARGET_PID;
+
+            UsbHsInterface hubs[4] = {};
+            s32 count = 0;
+
+            Result r = usbHsQueryAllInterfaces(&filter, hubs, sizeof(hubs), &count);
+            if (R_FAILED(r) || count == 0)
+            {
+                syscon::logger::LogInfo("[DIAG] Hub %04x:%04x not found via QueryAllInterfaces (rc=0x%x count=%d)", TARGET_VID, TARGET_PID, r, count);
+                return;
+            }
+
+            syscon::logger::LogInfo("[DIAG] Hub %04x:%04x found count=%d", TARGET_VID, TARGET_PID, count);
+
+            for (s32 i = 0; i < count; i++)
+            {
+                syscon::logger::LogInfo("[DIAG]  Hub[%d]: interface=0x%02x class=0x%02x sub=0x%02x proto=0x%02x",
+                    i,
+                    hubs[i].inf.interface_desc.bInterfaceNumber,
+                    hubs[i].inf.interface_desc.bInterfaceClass,
+                    hubs[i].inf.interface_desc.bInterfaceSubClass,
+                    hubs[i].inf.interface_desc.bInterfaceProtocol);
+
+                // Acquerir l'interface
+                UsbHsClientIfSession sess = {};
+                Result rc = usbHsAcquireUsbIf(&sess, &hubs[i]);
+                if (R_FAILED(rc))
+                {
+                    syscon::logger::LogInfo("[DIAG]  Hub[%d]: AcquireUsbIf failed rc=0x%x", i, rc);
+                    continue;
+                }
+
+                // GetInterface (etat actuel)
+                UsbHsInterfaceInfo cur_inf = {};
+                rc = usbHsIfGetInterface(&sess, &cur_inf);
+                if (R_SUCCEEDED(rc))
+                {
+                    syscon::logger::LogInfo("[DIAG]  Hub[%d]: GetInterface alt=%d class=0x%02x proto=0x%02x",
+                        i, cur_inf.interface_desc.bAlternateSetting,
+                        cur_inf.interface_desc.bInterfaceClass,
+                        cur_inf.interface_desc.bInterfaceProtocol);
+                }
+                else
+                {
+                    syscon::logger::LogInfo("[DIAG]  Hub[%d]: GetInterface failed rc=0x%x", i, rc);
+                }
+
+                // GetAlternateInterface(0)
+                UsbHsInterfaceInfo alt0 = {};
+                rc = usbHsIfGetAlternateInterface(&sess, &alt0, 0);
+                if (R_SUCCEEDED(rc))
+                {
+                    syscon::logger::LogInfo("[DIAG]  Hub[%d]: AltSetting0 alt=%d class=0x%02x sub=0x%02x proto=0x%02x numEp=%d",
+                        i, alt0.interface_desc.bAlternateSetting,
+                        alt0.interface_desc.bInterfaceClass,
+                        alt0.interface_desc.bInterfaceSubClass,
+                        alt0.interface_desc.bInterfaceProtocol,
+                        alt0.interface_desc.bNumEndpoints);
+                    // hexdump partiel
+                    const u8 *d = (const u8*)&alt0;
+                    syscon::logger::LogInfo("[DIAG]  Hub[%d]: alt0[0..31] = %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x  %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+                        i,
+                        d[0],d[1],d[2],d[3],d[4],d[5],d[6],d[7],d[8],d[9],d[10],d[11],d[12],d[13],d[14],d[15],
+                        d[16],d[17],d[18],d[19],d[20],d[21],d[22],d[23],d[24],d[25],d[26],d[27],d[28],d[29],d[30],d[31]);
+                }
+                else
+                {
+                    syscon::logger::LogInfo("[DIAG]  Hub[%d]: AltSetting0 failed rc=0x%x", i, rc);
+                }
+
+                // GetAlternateInterface(1) -> MTT ?
+                UsbHsInterfaceInfo alt1 = {};
+                rc = usbHsIfGetAlternateInterface(&sess, &alt1, 1);
+                if (R_SUCCEEDED(rc))
+                {
+                    syscon::logger::LogInfo("[DIAG]  Hub[%d]: ** AltSetting1 EXISTS ** alt=%d class=0x%02x sub=0x%02x proto=0x%02x numEp=%d",
+                        i, alt1.interface_desc.bAlternateSetting,
+                        alt1.interface_desc.bInterfaceClass,
+                        alt1.interface_desc.bInterfaceSubClass,
+                        alt1.interface_desc.bInterfaceProtocol,
+                        alt1.interface_desc.bNumEndpoints);
+                    const u8 *d = (const u8*)&alt1;
+                    syscon::logger::LogInfo("[DIAG]  Hub[%d]: alt1[0..31] = %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x  %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+                        i,
+                        d[0],d[1],d[2],d[3],d[4],d[5],d[6],d[7],d[8],d[9],d[10],d[11],d[12],d[13],d[14],d[15],
+                        d[16],d[17],d[18],d[19],d[20],d[21],d[22],d[23],d[24],d[25],d[26],d[27],d[28],d[29],d[30],d[31]);
+                }
+                else
+                {
+                    syscon::logger::LogInfo("[DIAG]  Hub[%d]: AltSetting1 NOT available (rc=0x%x) -> MTT improbable", i, rc);
+                }
+
+                usbHsIfClose(&sess);
+            }
+        }
         // --- FIN DIAG ---
 
         void UsbEventThreadFunc(void *arg)
@@ -190,6 +295,10 @@ namespace syscon::usb
                         if ((topo_iter & 0x0F) == 0) // ~15 poll => ~8s avec timeout 1s en absence de device
                         {
                             ProbeTopology();
+                        }
+                        if ((topo_iter & 0x01) == 0) // ~1s
+                        {
+                            ProbeHubAltSettings();
                         }
                     }
                     // --- FIN DIAG(source cadence) ---
