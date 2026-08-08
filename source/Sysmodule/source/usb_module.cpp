@@ -60,7 +60,7 @@ namespace syscon::usb
                 Result rc = waitObjects(&idx_out, g_usbWaiters, g_usbEventCount, timeoutNs);
                 if (R_SUCCEEDED(rc) || R_VALUE(rc) == KERNELRESULT(TimedOut))
                 {
-                    syscon::logger::LogDebug("New USB device detected (Or polling timeout), checking for controllers ...");
+                    syscon::logger::LogDebug("USB event poll: idx_out=%d events=%zu rc=0x%x", idx_out, g_usbEventCount, rc);
 
                     /*
                         For unknown reason we have to keep this lock in order to lock the usb stacks during the controller initialization
@@ -98,6 +98,9 @@ namespace syscon::usb
                         static UsbHsInterface avail_debug[MaxUsbHsInterfacesSize] = {};
                         s32 avail_debug_count = 0;
 
+                        static UsbHsInterface avail_debug[MaxUsbHsInterfacesSize] = {};
+                        s32 avail_debug_count = 0;
+
                         // Filtre vide = toutes les interfaces disponibles (pas seulement le VID 0810)
                         UsbHsInterfaceFilter filterAll{
                             .Flags = 0,
@@ -107,6 +110,29 @@ namespace syscon::usb
                         syscon::logger::LogInfo("[DEBUG] usbHsQueryAvailableInterfaces(ALL) rc=0x%x (module=%d desc=%d) count=%d", rc, R_MODULE(rc), R_DESCRIPTION(rc), avail_debug_count);
                         for (s32 i = 0; i < avail_debug_count; i++)
                             dump_interface("Available", i, avail_debug[i]);
+
+                        // usbHsQueryAllInterfaces : interfaces disponibles + acquises (que device soient en use ou non)
+                        static UsbHsInterface all_debug[MaxUsbHsInterfacesSize] = {};
+                        s32 all_debug_count = 0;
+                        memset(all_debug, 0, sizeof(all_debug));
+                        Result rcAll = usbHsQueryAllInterfaces(&filterAll, all_debug, sizeof(all_debug), &all_debug_count);
+                        syscon::logger::LogInfo("[DEBUG] usbHsQueryAllInterfaces(ALL) rc=0x%x count=%d", rcAll, all_debug_count);
+                        for (s32 i = 0; i < all_debug_count; i++)
+                        {
+                            const UsbHsInterface &iface = all_debug[i];
+                            syscon::logger::LogInfo("[DEBUG] All[%d]: infID=%d VID=0x%04x PID=0x%04x bcd=0x%04x class=0x%02x sub=0x%02x proto=0x%02x classif=0x%02x subif=0x%02x protoif=0x%02x",
+                                i,
+                                iface.inf.ID,
+                                iface.device_desc.idVendor,
+                                iface.device_desc.idProduct,
+                                iface.device_desc.bcdDevice,
+                                iface.device_desc.bDeviceClass,
+                                iface.device_desc.bDeviceSubClass,
+                                iface.device_desc.bDeviceProtocol,
+                                iface.inf.interface_desc.bInterfaceClass,
+                                iface.inf.interface_desc.bInterfaceSubClass,
+                                iface.inf.interface_desc.bInterfaceProtocol);
+                        }
                     }
                     // --- FIN DEBUG ---
 
@@ -240,7 +266,7 @@ namespace syscon::usb
                     else
                     {
                         syscon::logger::LogDebug("No HID or XBOX interfaces found !");
-                        timeoutNs = UINT64_MAX; // As soon as no controller is found, we wait for the next event
+                        timeoutNs = MS_TO_NS(1000); // DIAG: garder le poll actif pour logger les changements USB (au lieu de UINT64_MAX qui bloque le log)
                     }
                 }
             } while (is_usb_event_thread_running);
